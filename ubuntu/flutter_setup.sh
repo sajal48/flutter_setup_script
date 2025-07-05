@@ -73,6 +73,22 @@ echo "⚙️ Setting up Flutter v$FLUTTER_VERSION in $TOOLS_DIR..."
 run_step "📦 Installing system packages" \
     sudo apt update -y && sudo apt install -y curl git unzip xz-utils zip libglu1-mesa wget qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
 
+# Ensure required packages are installed
+if ! command -v curl &> /dev/null; then
+    echo "curl is not installed. Installing..."
+    sudo apt update && sudo apt install -y curl
+fi
+
+if ! command -v wget &> /dev/null; then
+    echo "wget is not installed. Installing..."
+    sudo apt update && sudo apt install -y wget
+fi
+
+if ! command -v unzip &> /dev/null; then
+    echo "unzip is not installed. Installing..."
+    sudo apt update && sudo apt install -y unzip
+fi
+
 # 2. Install SDKMAN! and Java
 if [ ! -d "$HOME/.sdkman" ]; then
     run_step "📥 Installing SDKMAN!" \
