@@ -76,7 +76,6 @@ This repository contains setup scripts for configuring a Flutter development env
 
 - If the script fails, check the error message and ensure all prerequisites are met.
 - For Windows, ensure Chocolatey is installed and accessible.
-- For Ubuntu, ensure `curl`, `wget`, and `unzip` are installed.
 
 ## License
 
