@@ -1,22 +1,22 @@
-= Flutter Setup Scripts
+# Flutter Setup Scripts
 
 This repository contains setup scripts for configuring a Flutter development environment on both **Windows** and **Ubuntu** systems.
 
-== Prerequisites
+## Prerequisites
 
-=== Windows
+### Windows
 - Windows 10/11
 - PowerShell 5.1 or later
 - Administrator privileges (recommended for Hyper-V support)
 
-=== Ubuntu
+### Ubuntu
 - Ubuntu 20.04 or later
 - Bash shell
 - sudo privileges
 
-== Usage
+## Usage
 
-=== Windows
+### Windows
 
 1. Open PowerShell as Administrator.
 2. Navigate to the `windows` directory:
@@ -37,7 +37,7 @@ This repository contains setup scripts for configuring a Flutter development env
    powershell -ExecutionPolicy Bypass -File .\flutter_setup.ps1 -FlutterVersion "3.24.3" -ToolsDir "C:\dev\tools" -JavaVersion "17"
    ```
 
-=== Ubuntu
+### Ubuntu
 
 1. Open a terminal.
 2. Navigate to the `ubuntu` directory:
@@ -58,7 +58,7 @@ This repository contains setup scripts for configuring a Flutter development env
    ./flutter_setup.sh
    ```
 
-== Features
+## Features
 
 - Installs Java 17 (via SDKMAN! on Ubuntu, Chocolatey on Windows)
 - Installs Android SDK and Command Line Tools
@@ -67,17 +67,37 @@ This repository contains setup scripts for configuring a Flutter development env
 - Creates an Android Virtual Device (AVD)
 - Runs `flutter doctor` to verify the setup
 
-== Notes
+## Notes
 
 - On Windows, ensure you run PowerShell as Administrator for optimal setup.
 - On Ubuntu, you may need to log out and log back in to apply group changes (e.g., adding the user to the `kvm` group).
 
-== Troubleshooting
+## Troubleshooting
 
 - If the script fails, check the error message and ensure all prerequisites are met.
 - For Windows, ensure Chocolatey is installed and accessible.
 - For Ubuntu, ensure `curl`, `wget`, and `unzip` are installed.
 
-== License
+## License
 
 This project is licensed under the MIT License.
+
+Copyright (c) 2025 Sajal Halder <newtoh48@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
