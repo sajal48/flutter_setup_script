@@ -1,0 +1,83 @@
+= Flutter Setup Scripts
+
+This repository contains setup scripts for configuring a Flutter development environment on both **Windows** and **Ubuntu** systems.
+
+== Prerequisites
+
+=== Windows
+- Windows 10/11
+- PowerShell 5.1 or later
+- Administrator privileges (recommended for Hyper-V support)
+
+=== Ubuntu
+- Ubuntu 20.04 or later
+- Bash shell
+- sudo privileges
+
+== Usage
+
+=== Windows
+
+1. Open PowerShell as Administrator.
+2. Navigate to the `windows` directory:
+
+   ```powershell
+   cd path\to\flutter_setup_script\windows
+   ```
+
+3. Run the script:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\flutter_setup.ps1
+   ```
+
+4. Optionally, specify custom parameters:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\flutter_setup.ps1 -FlutterVersion "3.24.3" -ToolsDir "C:\dev\tools" -JavaVersion "17"
+   ```
+
+=== Ubuntu
+
+1. Open a terminal.
+2. Navigate to the `ubuntu` directory:
+
+   ```bash
+   cd path/to/flutter_setup_script/ubuntu
+   ```
+
+3. Make the script executable:
+
+   ```bash
+   chmod +x flutter_setup.sh
+   ```
+
+4. Run the script:
+
+   ```bash
+   ./flutter_setup.sh
+   ```
+
+== Features
+
+- Installs Java 17 (via SDKMAN! on Ubuntu, Chocolatey on Windows)
+- Installs Android SDK and Command Line Tools
+- Installs Flutter SDK
+- Configures environment variables
+- Creates an Android Virtual Device (AVD)
+- Runs `flutter doctor` to verify the setup
+
+== Notes
+
+- On Windows, ensure you run PowerShell as Administrator for optimal setup.
+- On Ubuntu, you may need to log out and log back in to apply group changes (e.g., adding the user to the `kvm` group).
+
+== Troubleshooting
+
+- If the script fails, check the error message and ensure all prerequisites are met.
+- For Windows, ensure Chocolatey is installed and accessible.
+- For Ubuntu, ensure `curl`, `wget`, and `unzip` are installed.
+
+== License
+
+This project is licensed under the MIT License.
