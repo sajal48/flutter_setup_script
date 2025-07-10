@@ -58,6 +58,30 @@ This repository contains setup scripts for configuring a Flutter development env
    ./flutter_setup.sh
    ```
 
+## Uninstalling (Ubuntu)
+
+To completely remove the Flutter development environment:
+
+1. Navigate to the `ubuntu` directory:
+
+   ```bash
+   cd path/to/flutter_setup_script/ubuntu
+   ```
+
+2. Run the uninstall script:
+
+   ```bash
+   ./flutter_uninstall.sh
+   ```
+
+This will remove:
+- Flutter SDK
+- Android SDK
+- SDKMAN! and all Java versions installed via SDKMAN
+- Android Virtual Devices (AVDs)
+- Environment variables from shell configuration files
+- Optionally: system packages installed during setup
+
 ## Features
 
 - Installs Java 17 (via SDKMAN! on Ubuntu, Chocolatey on Windows)
