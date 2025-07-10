@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -euo pipefail
+# Use safer error handling that's compatible with SDKMAN
+set -eo pipefail
 
 # Configuration
 TOOLS_DIR="$HOME/tools"
@@ -73,22 +74,47 @@ show_progress() {
     local current=$1
     local total=$2
     local message=$3
+    
+    # Prevent division by zero
+    if [ "$total" -eq 0 ]; then
+        printf "\r${PURPLE}[${NC}] 0%% - ${message}${NC}"
+        return
+    fi
+    
     local percentage=$((current * 100 / total))
     local filled=$((percentage / 2))
     local empty=$((50 - filled))
     
-    printf "\r${PURPLE}[${NC}"
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    printf "${PURPLE}] ${percentage}%% - ${message}${NC}"
+    # Create the progress bar string using ASCII characters
+    local filled_str=""
+    local empty_str=""
+    
+    if [ $filled -gt 0 ]; then
+        filled_str=$(printf "%${filled}s" | tr ' ' '=')
+    fi
+    
+    if [ $empty -gt 0 ]; then
+        empty_str=$(printf "%${empty}s" | tr ' ' '-')
+    fi
+    
+    printf "\r${PURPLE}[${NC}${filled_str}${empty_str}${PURPLE}] ${percentage}%% - ${message}${NC}"
 }
 
 # Silent spinner for background operations
 spinner() {
     local pid=$1
     local message=$2
+    
+    # Try Unicode spinner first, fallback to ASCII if not supported
     local spin_chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     local delay=0.1
+    
+    # Test if Unicode is supported by checking if terminal can display it
+    if ! printf "⠋" 2>/dev/null | grep -q "⠋"; then
+        # Fallback to ASCII spinner
+        spin_chars="|/-\\"
+        delay=0.2
+    fi
     
     while kill -0 $pid 2>/dev/null; do
         for (( i=0; i<${#spin_chars}; i++ )); do
@@ -112,6 +138,7 @@ handle_error() {
 }
 
 trap 'handle_error ${LINENO}' ERR
+trap 'handle_interrupt' INT TERM
 
 cleanup_on_error() {
     print_warning "Cleaning up partial installations..."
@@ -120,9 +147,32 @@ cleanup_on_error() {
     log "Cleanup completed"
 }
 
+# Handle script interruption (Ctrl+C)
+handle_interrupt() {
+    echo ""
+    print_warning "Script interrupted by user"
+    cleanup_on_error
+    exit 130
+}
+
 # Check if running with necessary permissions
 check_permissions() {
     print_step "Checking system permissions and requirements"
+    
+    # Check for required commands
+    local required_commands=("curl" "wget" "unzip" "tar" "grep" "awk" "sed")
+    local missing_commands=()
+    
+    for cmd in "${required_commands[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_commands+=("$cmd")
+        fi
+    done
+    
+    if [ ${#missing_commands[@]} -gt 0 ]; then
+        print_warning "Missing required commands: ${missing_commands[*]}"
+        print_info "These will be installed automatically during system package installation"
+    fi
     
     # Check if we can use sudo
     if ! sudo -n true 2>/dev/null; then
@@ -234,6 +284,14 @@ execute_with_spinner() {
     
     # Execute command in background and capture output
     {
+        # Handle SDKMAN commands specially to avoid unbound variable issues
+        if [[ "$command" == *"sdk "* ]]; then
+            # Ensure SDKMAN is sourced before running sdk commands
+            export SDKMAN_DIR="$HOME/.sdkman"
+            if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
+                source "$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null || true
+            fi
+        fi
         eval "$command" >> "$LOG_FILE" 2>&1
     } &
     local cmd_pid=$!
@@ -278,11 +336,15 @@ install_sdkman() {
         
         # Source SDKMAN
         export SDKMAN_DIR="$HOME/.sdkman"
-        [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+        if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+        fi
     else
         print_success "SDKMAN! already installed"
         export SDKMAN_DIR="$HOME/.sdkman"
-        [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+        if [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]]; then
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+        fi
     fi
     
     # Install Java if not present
@@ -301,7 +363,9 @@ configure_shell_profiles() {
     print_step "Configuring shell profiles"
     
     local shell_configs=("$HOME/.bashrc")
-    [ -f "$HOME/.zshrc" ] && shell_configs+=("$HOME/.zshrc")
+    if [ -f "$HOME/.zshrc" ]; then
+        shell_configs+=("$HOME/.zshrc")
+    fi
     
     for config in "${shell_configs[@]}"; do
         # SDKMAN configuration
@@ -346,18 +410,25 @@ download_with_progress() {
     print_info "Downloading $description..."
     
     # Use wget with progress bar and resume capability
-    if ! wget --progress=bar:force:noscroll --continue --timeout=30 --tries=3 \
-             "$url" -O "$output" 2>&1 | \
-             sed -u 's/.* \([0-9]\+%\).*/@\1@/' | \
-             while IFS='@' read -r line percent rest; do
-                 [ -n "$percent" ] && printf "\r${CYAN}Downloading $description: $percent${NC}"
-             done; then
+    if wget --progress=bar:force:noscroll --continue --timeout=30 --tries=3 \
+           "$url" -O "$output" 2>&1 | \
+           {
+               while IFS= read -r line; do
+                   # Extract percentage from various wget progress formats
+                   if [[ "$line" =~ ([0-9]+)% ]]; then
+                       local percent="${BASH_REMATCH[1]}"
+                       printf "\r${CYAN}Downloading $description: ${percent}%%${NC}"
+                   elif [[ "$line" =~ \.\.\. ]]; then
+                       printf "\r${CYAN}Downloading $description...${NC}"
+                   fi
+               done
+           }; then
+        printf "\r${GREEN}${CHECK} Downloaded $description successfully${NC}\n"
+        return 0
+    else
         print_error "Failed to download $description"
         return 1
     fi
-    
-    printf "\r${GREEN}${CHECK} Downloaded $description successfully${NC}\n"
-    return 0
 }
 
 # Install Android SDK with better error handling
@@ -373,16 +444,34 @@ install_android_sdk() {
         if download_with_progress "$url" "$temp_file" "Android Command Line Tools"; then
             execute_with_spinner "unzip -q '$temp_file' -d /tmp" "Extracting Android tools"
             
-            # Handle directory structure
+            # Handle directory structure - more robust approach
             if [ -d "/tmp/cmdline-tools" ]; then
+                # Remove target directory if it exists
+                if [ -d "$CMDLINE_TOOLS_DIR" ]; then
+                    rm -rf "$CMDLINE_TOOLS_DIR"
+                fi
+                mkdir -p "$(dirname "$CMDLINE_TOOLS_DIR")"
                 mv "/tmp/cmdline-tools" "$CMDLINE_TOOLS_DIR"
                 rm -f "$temp_file"
+            else
+                print_error "Failed to extract Android Command Line Tools"
+                rm -f "$temp_file"
+                return 1
             fi
             
             # Fix nested directory issue
             if [ -d "$CMDLINE_TOOLS_DIR/cmdline-tools" ] && [ ! -f "$CMDLINE_TOOLS_DIR/bin/sdkmanager" ]; then
-                mv "$CMDLINE_TOOLS_DIR/cmdline-tools"/* "$CMDLINE_TOOLS_DIR/"
-                rmdir "$CMDLINE_TOOLS_DIR/cmdline-tools"
+                # Move contents up one level
+                local temp_dir="/tmp/cmdline-tools-temp"
+                mv "$CMDLINE_TOOLS_DIR/cmdline-tools" "$temp_dir"
+                rm -rf "$CMDLINE_TOOLS_DIR"
+                mv "$temp_dir" "$CMDLINE_TOOLS_DIR"
+            fi
+            
+            # Verify the installation
+            if [ ! -f "$CMDLINE_TOOLS_DIR/bin/sdkmanager" ]; then
+                print_error "Android Command Line Tools installation failed - sdkmanager not found"
+                return 1
             fi
         else
             return 1
@@ -450,11 +539,122 @@ setup_kvm() {
     fi
 }
 
-# Accept Android licenses
+# Accept Android licenses with enhanced handling
 accept_licenses() {
     print_step "Accepting Android SDK licenses"
     
-    execute_with_spinner "yes | flutter doctor --android-licenses" "Accepting all Android licenses"
+    local max_attempts=3
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        print_info "Attempting to accept Android licenses (attempt $attempt/$max_attempts)..."
+        
+        # Method 1: Use flutter doctor --android-licenses with yes command
+        if command -v flutter >/dev/null 2>&1; then
+            export ANDROID_HOME="$ANDROID_SDK_DIR"
+            export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$CMDLINE_TOOLS_DIR/bin:$PATH"
+            
+            # Create a temporary file with multiple 'y' responses
+            local license_responses=$(mktemp)
+            
+            # Generate enough 'y' responses for all possible licenses (50 should be more than enough)
+            if command -v seq >/dev/null 2>&1; then
+                for i in $(seq 1 50); do
+                    echo "y"
+                done > "$license_responses"
+            else
+                # Fallback if seq is not available
+                for i in {1..50}; do
+                    echo "y"
+                done > "$license_responses"
+            fi
+            
+            # Try flutter doctor --android-licenses with input redirection
+            if timeout 120 flutter doctor --android-licenses < "$license_responses" >> "$LOG_FILE" 2>&1; then
+                rm -f "$license_responses"
+                print_success "Android licenses accepted successfully"
+                return 0
+            fi
+            
+            # Fallback: Use yes command with timeout
+            if timeout 120 yes | flutter doctor --android-licenses >> "$LOG_FILE" 2>&1; then
+                rm -f "$license_responses"
+                print_success "Android licenses accepted successfully"
+                return 0
+            fi
+            
+            rm -f "$license_responses"
+        fi
+        
+        # Method 2: Use sdkmanager directly if flutter method fails
+        if [ -f "$CMDLINE_TOOLS_DIR/bin/sdkmanager" ]; then
+            export ANDROID_HOME="$ANDROID_SDK_DIR"
+            export PATH="$CMDLINE_TOOLS_DIR/bin:$PATH"
+            
+            print_info "Trying sdkmanager license acceptance..."
+            
+            # Create license responses file
+            local sdk_license_responses=$(mktemp)
+            if command -v seq >/dev/null 2>&1; then
+                for i in $(seq 1 50); do
+                    echo "y"
+                done > "$sdk_license_responses"
+            else
+                # Fallback if seq is not available
+                for i in {1..50}; do
+                    echo "y"
+                done > "$sdk_license_responses"
+            fi
+            
+            if timeout 120 "$CMDLINE_TOOLS_DIR/bin/sdkmanager" --licenses --sdk_root="$ANDROID_HOME" < "$sdk_license_responses" >> "$LOG_FILE" 2>&1; then
+                rm -f "$sdk_license_responses"
+                print_success "Android licenses accepted via sdkmanager"
+                return 0
+            fi
+            
+            rm -f "$sdk_license_responses"
+        fi
+        
+        # If both methods fail, try one more time or give manual instructions
+        if [ $attempt -lt $max_attempts ]; then
+            print_warning "License acceptance failed, retrying in 3 seconds..."
+            sleep 3
+            attempt=$((attempt + 1))
+        else
+            print_warning "Automatic license acceptance failed after $max_attempts attempts"
+            print_warning "You may need to manually accept licenses by running:"
+            print_warning "  flutter doctor --android-licenses"
+            print_warning "Or:"
+            print_warning "  \$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses"
+            
+            # Ask user if they want to try manual acceptance now
+            echo ""
+            echo "🔒 Android SDK licenses need to be accepted for development."
+            echo "Would you like to try manual license acceptance now? (y/N): "
+            read -r manual_accept
+            
+            if [[ "$manual_accept" =~ ^[Yy]$ ]]; then
+                echo ""
+                echo "Please type 'y' and press Enter for each license prompt..."
+                echo "Press Ctrl+C if you want to skip this step."
+                echo ""
+                sleep 2
+                
+                # Try manual acceptance
+                export ANDROID_HOME="$ANDROID_SDK_DIR"
+                export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$CMDLINE_TOOLS_DIR/bin:$PATH"
+                
+                if flutter doctor --android-licenses; then
+                    print_success "Licenses accepted manually"
+                    return 0
+                else
+                    print_warning "Manual license acceptance was interrupted or failed"
+                fi
+            fi
+            
+            return 1
+        fi
+    done
 }
 
 # Final verification
@@ -479,64 +679,67 @@ main() {
     print_header
     
     # Step 1
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Checking permissions"
     check_permissions
     
     # Step 2
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Detecting system"
     detect_distro
     
     # Step 3
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Installing system packages"
     install_system_packages
     
     # Step 4
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Verifying core tools"
     verify_command curl curl
     verify_command wget wget
     verify_command unzip unzip
     
     # Step 5
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Setting up Java environment"
     install_sdkman
     
     # Step 6
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Creating tools directory"
     mkdir -p "$TOOLS_DIR"
     
     # Step 7
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Installing Android SDK"
     install_android_sdk
     
     # Step 8
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Installing Flutter SDK"
     install_flutter
     
     # Step 9
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Configuring shell environment"
     configure_shell_profiles
     
     # Step 10
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Accepting Android licenses"
-    accept_licenses
+    if ! accept_licenses; then
+        print_warning "Android license acceptance had issues. The script will continue, but you may need to accept licenses manually later."
+        print_info "You can manually accept licenses later by running: flutter doctor --android-licenses"
+    fi
     
     # Step 11
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Creating Android Virtual Device"
     create_avd
     
     # Step 12
-    ((current_step++))
+    current_step=$((current_step + 1))
     show_progress $current_step $total_steps "Setting up emulator permissions"
     setup_kvm
     
@@ -576,8 +779,19 @@ main() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         print_info "Starting Android emulator in background..."
-        nohup emulator -avd flutter_avd -netdelay none -netspeed full >/dev/null 2>&1 &
-        print_success "Emulator started! It may take a few moments to fully boot up."
+        
+        # Ensure proper environment for emulator
+        export ANDROID_HOME="$ANDROID_SDK_DIR"
+        export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$CMDLINE_TOOLS_DIR/bin:$PATH"
+        
+        # Check if emulator command is available
+        if command -v emulator >/dev/null 2>&1; then
+            nohup emulator -avd flutter_avd -netdelay none -netspeed full >/dev/null 2>&1 &
+            print_success "Emulator started! It may take a few moments to fully boot up."
+        else
+            print_warning "Emulator command not found. Please restart your terminal and run:"
+            print_info "emulator -avd flutter_avd"
+        fi
     fi
 }
 
